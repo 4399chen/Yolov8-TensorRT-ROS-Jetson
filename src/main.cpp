@@ -10,10 +10,21 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/calib3d.hpp>
 
-#include "fsd_common_msgs/YoloCone.h"
-#include "fsd_common_msgs/YoloConeDetections.h"
-#include "fsd_common_msgs/img_pro_info.h"
 #include "std_msgs/Float32.h"
+
+#include <vision_msgs/BoundingBox2D.h>
+#include <vision_msgs/BoundingBox2DArray.h>
+#include <vision_msgs/BoundingBox3D.h>
+#include <vision_msgs/BoundingBox3DArray.h>
+#include <vision_msgs/Classification2D.h>
+#include <vision_msgs/Classification3D.h>
+#include <vision_msgs/Detection2DArray.h>
+#include <vision_msgs/Detection2D.h>
+#include <vision_msgs/Detection3DArray.h>
+#include <vision_msgs/Detection3D.h>
+#include <vision_msgs/ObjectHypothesis.h>
+#include <vision_msgs/ObjectHypothesisWithPose.h>
+#include <vision_msgs/VisionInfo.h>
 
 const std::vector<std::string> CLASS_NAMES = {
     "person",         "bicycle",    "car",           "motorcycle",    "airplane",     "bus",           "train",
@@ -45,17 +56,15 @@ const std::vector<std::vector<unsigned int>> COLORS = {
     {73, 73, 73},    {109, 109, 109}, {146, 146, 146}, {182, 182, 182}, {219, 219, 219}, {0, 114, 189},
     {80, 183, 189},  {128, 128, 0}};
 
+ros::Publisher result_pub;
 
 void Callback(const sensor_msgs::ImageConstPtr &msg, YOLOv8* yolov8, ros::NodeHandle& nh){
-
-    //make a ROS publisher topic "/boundingboxes" as "result_pub"
-    static ros::Publisher result_pub = nh.advertise<fsd_common_msgs::YoloConeDetections>("/yolov8/boundingboxes", 1);
+    result_pub = nh.advertise<vision_msgs::Detection2DArray>("/boundingboxes", 1);
 
     //make a message to save
-    fsd_common_msgs::YoloConeDetections predict_result_msgs;
-    fsd_common_msgs::YoloCone result;
+    vision_msgs::Detection2DArray detect_array_msg;
 
-    predict_result_msgs.image_header = msg->header;
+    // detect_array_msg.image_header = msg->header;
 
     cv::Mat             res, img;
     cv::Size            size = cv::Size{640, 640};
@@ -91,25 +100,22 @@ void Callback(const sensor_msgs::ImageConstPtr &msg, YOLOv8* yolov8, ros::NodeHa
     printf("cost %.4lf ms\n", tc);
 
     for (int i=0; i<objs.size(); i++) {
-        printf("---\n");
-        printf("x       = %f\n", objs[i].rect.x);
-        printf("y       = %f\n", objs[i].rect.y);
-        printf("width   = %f\n", objs[i].rect.width);
-        printf("height  = %f\n", objs[i].rect.height);
-        printf("label   = %d\n", objs[i].label);
-        printf("prob    = %f\n", objs[i].prob);
+        vision_msgs::Detection2D detect_msg;
+        vision_msgs::ObjectHypothesisWithPose hypo;
 
-        result.x.data       = objs[i].rect.x;
-        result.y.data       = objs[i].rect.y;
-        result.width.data   = objs[i].rect.width;
-        result.height.data  = objs[i].rect.height;
-        result.label.data   = objs[i].label;
-        result.prob.data    = objs[i].prob;
-        
-        predict_result_msgs.cone_detections.push_back(result);
+        hypo.id = objs[i].label;  // 设置类别ID
+        hypo.score = objs[i].prob;  // 设置置信度
+        detect_msg.results.push_back(hypo);
+
+        detect_msg.bbox.center.x = objs[i].rect.x + objs[i].rect.width / 2;
+        detect_msg.bbox.center.y = objs[i].rect.y + objs[i].rect.height / 2;
+        detect_msg.bbox.size_x = objs[i].rect.width;
+        detect_msg.bbox.size_y = objs[i].rect.height;
+
+        detect_array_msg.detections.push_back(detect_msg);
     }
 
-    result_pub.publish(predict_result_msgs);
+    result_pub.publish(detect_array_msg);
 
     //show the video with boundingboxs
     cv::imshow("result_img", res);
@@ -143,6 +149,7 @@ int main(int argc, char** argv)
     //make a handle
     ros::NodeHandle nh;
 
+    result_pub = nh.advertise<vision_msgs::Detection2DArray>("/boundingboxes", 1);
 
     if (IsFile(path)) {
         std::string suffix = path.substr(path.find_last_of('.') + 1);
@@ -175,10 +182,7 @@ int main(int argc, char** argv)
         ros::spin();
     }
     else {
-        static ros::Publisher result_pub = nh.advertise<fsd_common_msgs::YoloConeDetections>("/yolov8/boundingboxes", 1);
-
-        fsd_common_msgs::YoloConeDetections predict_result_msgs;
-        fsd_common_msgs::YoloCone result;
+        vision_msgs::Detection2DArray detect_array_msg;
         cv::Mat             res, image;
         cv::Size            size = cv::Size{640, 640};
         std::vector<Object> objs;
@@ -218,24 +222,21 @@ int main(int argc, char** argv)
                 printf("cost %.4lf ms\n", tc);
 
                 for (int i=0; i<objs.size(); i++) {
-                    printf("---------------------------------------------------\n");
-                    printf("x       = %f\n", objs[i].rect.x);
-                    printf("y       = %f\n", objs[i].rect.y);
-                    printf("width   = %f\n", objs[i].rect.width);
-                    printf("height  = %f\n", objs[i].rect.height);
-                    printf("label   = %d\n", objs[i].label);
-                    printf("prob    = %f\n", objs[i].prob);
+                    vision_msgs::Detection2D detect_msg;
+                    vision_msgs::ObjectHypothesisWithPose hypo;
 
-                    result.x.data       = objs[i].rect.x;
-                    result.y.data       = objs[i].rect.y;
-                    result.width.data   = objs[i].rect.width;
-                    result.height.data  = objs[i].rect.height;
-                    result.label.data   = objs[i].label;
-                    result.prob.data    = objs[i].prob;
-                    
-                    predict_result_msgs.cone_detections.push_back(result);
+                    hypo.id = objs[i].label;  // 设置类别ID
+                    hypo.score = objs[i].prob;  // 设置置信度
+                    detect_msg.results.push_back(hypo);
+
+                    detect_msg.bbox.center.x = objs[i].rect.x + objs[i].rect.width / 2;
+                    detect_msg.bbox.center.y = objs[i].rect.y + objs[i].rect.height / 2;
+                    detect_msg.bbox.size_x = objs[i].rect.width;
+                    detect_msg.bbox.size_y = objs[i].rect.height;
+
+                    detect_array_msg.detections.push_back(detect_msg);
                 }
-                result_pub.publish(predict_result_msgs);
+                result_pub.publish(detect_array_msg);
                 //show the video with boundingboxs
                 cv::imshow("result_img", res);
 
@@ -259,25 +260,21 @@ int main(int argc, char** argv)
                 printf("####################################################\n");
                 printf("cost %2.4lf ms\n", tc);
                 for (int i=0; i<objs.size(); i++) {
-                    printf("---------------------------------------------------\n");
-                    printf("x = %f\n", objs[i].rect.x);
-                    printf("y = %f\n", objs[i].rect.y);
-                    printf("width = %f\n", objs[i].rect.width);
-                    printf("height = %f\n", objs[i].rect.height);
-                    printf("label = %d\n", objs[i].label);
-                    printf("prob = %f\n", objs[i].prob);  
+                    vision_msgs::Detection2D detect_msg;
+                    vision_msgs::ObjectHypothesisWithPose hypo;
 
-                    result.x.data       = objs[i].rect.x;
-                    result.y.data       = objs[i].rect.y;
-                    result.width.data   = objs[i].rect.width;
-                    result.height.data  = objs[i].rect.height;
-                    result.label.data   = objs[i].label;
-                    result.prob.data    = objs[i].prob;
+                    hypo.id = objs[i].label;  // 设置类别ID
+                    hypo.score = objs[i].prob;  // 设置置信度
+                    detect_msg.results.push_back(hypo);
 
-                    predict_result_msgs.cone_detections.push_back(result);
+                    detect_msg.bbox.center.x = objs[i].rect.x + objs[i].rect.width / 2;
+                    detect_msg.bbox.center.y = objs[i].rect.y + objs[i].rect.height / 2;
+                    detect_msg.bbox.size_x = objs[i].rect.width;
+                    detect_msg.bbox.size_y = objs[i].rect.height;
+
+                    detect_array_msg.detections.push_back(detect_msg);
                 }
-                result_pub.publish(predict_result_msgs);
-                predict_result_msgs.cone_detections.push_back(result);
+                result_pub.publish(detect_array_msg);
                 cv::imshow("result_img", res);
                 cv::waitKey(0);
             }
