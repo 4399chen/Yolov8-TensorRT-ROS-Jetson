@@ -23,7 +23,7 @@ find_package(catkin REQUIRED
             message_generation
             cv_bridge
             tf2
-            fsd_common_msgs
+            vision_msgs
         )
 
 catkin_package(
